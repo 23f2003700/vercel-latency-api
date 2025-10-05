@@ -1,0 +1,156 @@
+name: Dependency Caching Workflow
+
+on:
+  push:
+    branches: [ master, main ]
+  pull_request:
+    branches: [ master, main ]
+  workflow_dispatch: # Allows manual triggering
+
+jobs:
+  build-with-cache:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Cache Python dependencies
+        id: cache-dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: cache-385ac90-${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            cache-385ac90-${{ runner.os }}-pip-
+
+      - name: prime-cache-385ac90
+        run: |
+          if [ "${{ steps.cache-dependencies.outputs.cache-hit }}" == "true" ]; then
+            echo "🎯 Cache HIT! Dependencies loaded from cache-385ac90"
+            echo "Cache key: cache-385ac90-${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}"
+            echo "Cache restored successfully - no need to download dependencies"
+          else
+            echo "💾 Cache MISS! Will download and cache dependencies with key cache-385ac90"
+            echo "Cache key: cache-385ac90-${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}"
+            echo "This will prime the cache for future runs"
+          fi
+          echo "Cache status: ${{ steps.cache-dependencies.outputs.cache-hit }}"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          echo "Dependencies installed successfully"
+
+      - name: Cache Node.js dependencies
+        id: cache-node-deps
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: cache-385ac90-node-${{ runner.os }}-${{ hashFiles('**/package-lock.json', '**/yarn.lock') }}
+          restore-keys: |
+            cache-385ac90-node-${{ runner.os }}-
+
+      - name: Setup Node.js (for potential frontend dependencies)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Display cache statistics
+        run: |
+          echo "=== Cache Statistics ==="
+          echo "Python cache hit: ${{ steps.cache-dependencies.outputs.cache-hit }}"
+          echo "Node cache hit: ${{ steps.cache-node-deps.outputs.cache-hit }}"
+          echo "Python cache key: cache-385ac90-${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}"
+          echo "Node cache key: cache-385ac90-node-${{ runner.os }}-${{ hashFiles('**/package-lock.json', '**/yarn.lock') }}"
+          echo "Cache directory sizes:"
+          du -sh ~/.cache/pip || echo "No pip cache directory"
+          du -sh ~/.npm || echo "No npm cache directory"
+
+      - name: Test API with cached dependencies
+        run: |
+          echo "Testing FastAPI application with cached dependencies..."
+          python -c "
+          try:
+              from api.index import app, DATA
+              import numpy as np
+              print('✅ Successfully imported FastAPI app')
+              print(f'✅ Data contains {len(DATA)} records')
+              print('✅ NumPy operations working')
+              
+              # Test basic calculations
+              latencies = [record['latency_ms'] for record in DATA[:10]]
+              avg = np.mean(latencies)
+              p95 = np.percentile(latencies, 95)
+              print(f'✅ Sample calculations: avg={avg:.2f}ms, p95={p95:.2f}ms')
+              
+          except Exception as e:
+              print(f'❌ Error: {e}')
+              exit(1)
+          "
+
+      - name: Performance test with cache benefits
+        run: |
+          echo "=== Performance Analysis ==="
+          start_time=$(date +%s%N)
+          
+          # Simulate dependency-heavy operations
+          python -c "
+          import time
+          import numpy as np
+          from api.index import DATA
+          
+          print('Running performance tests with cached dependencies...')
+          
+          # Multiple calculations to test cached library performance
+          for i in range(5):
+              latencies = [r['latency_ms'] for r in DATA]
+              np.mean(latencies)
+              np.percentile(latencies, 95)
+              np.std(latencies)
+          
+          print('✅ Performance tests completed')
+          "
+          
+          end_time=$(date +%s%N)
+          duration=$(( (end_time - start_time) / 1000000 ))
+          echo "Total execution time: ${duration}ms"
+          echo "Cache benefits: Faster dependency loading and library initialization"
+
+  verify-cache-persistence:
+    runs-on: ubuntu-latest
+    needs: build-with-cache
+    if: always()
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Verify cache persistence
+        id: verify-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: cache-385ac90-${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            cache-385ac90-${{ runner.os }}-pip-
+
+      - name: Cache verification results
+        run: |
+          echo "=== Cache Verification ==="
+          echo "Cache key used: cache-385ac90-${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}"
+          if [ "${{ steps.verify-cache.outputs.cache-hit }}" == "true" ]; then
+            echo "🎉 SUCCESS: Cache persisted across jobs!"
+            echo "The cache-385ac90 key is working correctly"
+          else
+            echo "⚠️  Cache not found in verification job"
+          fi
+          echo "Verification cache hit: ${{ steps.verify-cache.outputs.cache-hit }}"
