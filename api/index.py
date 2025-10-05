@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List
@@ -9,8 +9,8 @@ app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
 )
 
@@ -21,11 +21,18 @@ class LatencyRequest(BaseModel):
     threshold_ms: float
 
 @app.get("/")
-def read_root():
+def read_root(response: Response):
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "*"
     return {"message": "Latency API is running"}
 
 @app.post("/analyze")
-def analyze_latency(request: LatencyRequest):
+def analyze_latency(request: LatencyRequest, response: Response):
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "*"
+    
     results = {}
     for region in request.regions:
         region_data = [r for r in DATA if r["region"] == region]
@@ -40,3 +47,10 @@ def analyze_latency(request: LatencyRequest):
         breaches = sum(1 for lat in latencies if lat > request.threshold_ms)
         results[region] = {"avg_latency": avg_latency, "p95_latency": p95_latency, "avg_uptime": avg_uptime, "breaches": breaches}
     return results
+
+@app.options("/{path:path}")
+def options_handler(response: Response):
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "*"
+    return {}
