@@ -36,20 +36,38 @@ def analyze_latency(request: LatencyRequest, response: Response):
     response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
     response.headers["Access-Control-Allow-Headers"] = "*"
     
-    results = {}
+    regions_data = []
     for region in request.regions:
         region_data = [r for r in DATA if r["region"] == region]
         if not region_data:
-            results[region] = {"avg_latency": 0, "p95_latency": 0, "avg_uptime": 0, "breaches": 0}
-            continue
-        latencies = [r["latency_ms"] for r in region_data]
-        uptimes = [r["uptime_pct"] for r in region_data]
-        avg_latency = round(float(np.mean(latencies)), 2)
-        p95_latency = round(float(np.percentile(latencies, 95)), 2)
-        avg_uptime = round(float(np.mean(uptimes)), 2)
-        breaches = sum(1 for lat in latencies if lat > request.threshold_ms)
-        results[region] = {"avg_latency": avg_latency, "p95_latency": p95_latency, "avg_uptime": avg_uptime, "breaches": breaches}
-    return results
+            region_result = {
+                "region": region,
+                "avg_latency": 0, 
+                "p95_latency": 0, 
+                "avg_uptime": 0, 
+                "breaches": 0
+            }
+        else:
+            latencies = [r["latency_ms"] for r in region_data]
+            uptimes = [r["uptime_pct"] for r in region_data]
+            avg_latency = round(float(np.mean(latencies)), 2)
+            p95_latency = round(float(np.percentile(latencies, 95)), 2)
+            avg_uptime = round(float(np.mean(uptimes)), 2)
+            breaches = sum(1 for lat in latencies if lat > request.threshold_ms)
+            region_result = {
+                "region": region,
+                "avg_latency": avg_latency, 
+                "p95_latency": p95_latency, 
+                "avg_uptime": avg_uptime, 
+                "breaches": breaches
+            }
+        regions_data.append(region_result)
+    
+    return {
+        "regions": regions_data,
+        "threshold_ms": request.threshold_ms,
+        "total_regions": len(request.regions)
+    }
 
 @app.options("/{path:path}")
 def options_handler(response: Response):
